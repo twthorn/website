@@ -46,21 +46,113 @@ FROM order JOIN
 GROUP BY order.office
 ```
 
-Route is the operator that sends a query to one or more shards. The `order` and the `order_line` join cannot be merged into a single route, so we have to do the joining and some of the aggregation at the VTGate level. The routing planner has decided that the best plan is to first query the `order` table and then for each row in this table, we’ll issue a query against the `order_line` table. So after planning how to send the queries, we have this plan:
+Route is the operator that sends a query to one or more shards.
+The `order` and the `order_line` join cannot be merged into a single route, so we have to do the joining and some of the aggregation at the VTGate level. 
+The routing planner has decided that the best plan is to first query the `order` table and then for each row in this table, we’ll issue a query against the `order_line` table.
+So after planning how to send the queries, we have this plan:
 
-This is a VTGate execution plan for the query above. Everything under a Route is going to be sent to the underlying MySQL as a single query. Everything above the route is evaluated at the VTGate level. The plan so far says that we’ll have to send a scatter query to the `orders` keyspace, hitting all shards.
+```mermaid
+graph TD
+    Join("⨝ Join")
+    RouteOrder[Route<br>order]
+    RouteOrderLine[Route<br>order_line]
 
-The join is a nested loop join, which means that we’ll execute the query on the left-hand side (LHS) of the Join, and using that result we’ll issue queries on the right-hand side (RHS), one query per row. Now it’s time to do the aggregation planning.
+    QueryOrder[SELECT<br>FROM order]
+    QueryOrderLine[SELECT<br>FROM order_line<br>WHERE order_id = :__order_id]
 
-We’ll take the example query and go over it from back to front. While doing this, we’ll figure out what we should send to the LHS of the join.
+    Join --> RouteOrder
+    Join --> RouteOrderLine
+
+    RouteOrder --> QueryOrder
+    RouteOrderLine --> QueryOrderLine
+```
+
+This is a VTGate execution plan for the query above.
+Everything under a Route is going to be sent to the underlying MySQL as a single query.
+Everything above the route is evaluated at the VTGate level.
+The plan so far says that we’ll have to send a scatter query to the `orders` keyspace, hitting all shards.
+
+The join is a nested loop join, which means that we’ll execute the query on the left-hand side (LHS) of the Join, and using that result we’ll issue queries on the right-hand side (RHS), one query per row.
+Now it’s time to do the aggregation planning.
+
+We’ll take the example query and go over it from back to front.
+While doing this, we’ll figure out what we should send to the LHS of the join.
 
 The original query was grouping on `order.office` — we can keep that column in the LHS grouping.
 
-Since we are doing a join on `order.id`, we need to add that column to the select list and to the grouping. Otherwise, this column would not be available to the join.
+```mermaid
+graph TD
+    Join("⨝ Join")
+    RouteOrder[Route<br>order]
+    RouteOrderLine[Route<br>order_line]
+
+    QueryOrder[SELECT **office**<br>FROM order **group by office**]
+    QueryOrderLine[SELECT<br>FROM order_line<br>WHERE order_id = :__order_id]
+
+    Join --> RouteOrder
+    Join --> RouteOrderLine
+
+    RouteOrder --> QueryOrder
+    RouteOrderLine --> QueryOrderLine
+```
+
+
+Since we are doing a join on `order.id`, we need to add that column to the select list and to the grouping.
+Otherwise, this column would not be available to the join.
+
+```mermaid
+graph TD
+    Join("⨝ Join")
+    RouteOrder[Route<br>order]
+    RouteOrderLine[Route<br>order_line]
+
+    QueryOrder[SELECT office, **id**<br>FROM order group by office, **id**]
+    QueryOrderLine[SELECT<br>FROM order_line<br>WHERE order_id = :__order_id]
+
+    Join --> RouteOrder
+    Join --> RouteOrderLine
+
+    RouteOrder --> QueryOrder
+    RouteOrderLine --> QueryOrderLine
+```
 
 The `SUM` aggregation can’t be sent to the LHS — we’ll send that to the RHS.
 
-Since we are grouping on the left side, we need to keep track of how many rows were included in each group. It’ll make more sense when we later use these numbers to produce the final result. So the execution plan so far looks like:
+```mermaid
+graph TD
+    Join("⨝ Join")
+    RouteOrder[Route<br>order]
+    RouteOrderLine[Route<br>order_line]
+
+    QueryOrder[SELECT office, id<br>FROM order group by office, id]
+    QueryOrderLine["SELECT sum(amount)<br>FROM order_line<br>WHERE order_id = :__order_id"]
+
+    Join --> RouteOrder
+    Join --> RouteOrderLine
+
+    RouteOrder --> QueryOrder
+    RouteOrderLine --> QueryOrderLine
+```
+
+Since we are grouping on the left side, we need to keep track of how many rows were included in each group.
+It’ll make more sense when we later use these numbers to produce the final result.
+So the execution plan so far looks like:
+
+```mermaid
+graph TD
+    Join("⨝ Join")
+    RouteOrder[Route<br>order]
+    RouteOrderLine[Route<br>order_line]
+
+    QueryOrder["SELECT office, id, **count(*)**<br>FROM order group by office, id"]
+    QueryOrderLine["SELECT sum(amount<br>FROM order_line<br>WHERE order_id = :__order_id"]
+
+    Join --> RouteOrder
+    Join --> RouteOrderLine
+
+    RouteOrder --> QueryOrder
+    RouteOrderLine --> QueryOrderLine
+```
 
 ## Show me the results
 
@@ -102,11 +194,32 @@ So finally, the join will produce the joined results:
 | 2            | 3         | 10                     |
 | 2            | 3         | 7                      |
 
-It’s not returning `order.id`, since we only needed it for the join. This is still not the result we want. The user did not ask for `count(*)`, and the grouping looks wrong. We can’t return multiple rows with the same `order.office` value.
+It’s not returning `order.id`, since we only needed it for the join.
+This is still not the result we want.
+The user did not ask for `count(*)`, and the grouping looks wrong.
+We can’t return multiple rows with the same `order.office` value.
 
-The next step is to combine the `count(*)` from the LHS, and the `sum(order_line.amount)` from the RHS. We simply multiply them together. This is what the `Project` operator will take care of; it allows the use of the evalengine mentioned above to evaluate arithmetic operations at the vtgate level.
+The next step is to combine the `count(*)` from the LHS, and the `sum(order_line.amount)` from the RHS.
+We simply multiply them together.
+This is what the `Project` operator will take care of; it allows the use of the evalengine mentioned above to evaluate arithmetic operations at the vtgate level.
 
-![](/assets/blog/content/vitess-grouping/Vitess-step-6.svg)
+```mermaid
+graph TD
+    Project["π Project<br>count(*) * sum(amount)"]
+    Join["⨝ Join"]
+    RouteOrder[Route<br>order]
+    RouteOrderLine[Route<br>order_line]
+
+    QueryOrder["SELECT office, id, count(*)<br>FROM order<br>GROUP BY office, id"]
+    QueryOrderLine["SELECT sum(amount)<br>FROM order_line<br>WHERE order_id = :__order_id"]
+
+    Project --> Join
+    Join --> RouteOrder
+    Join --> RouteOrderLine
+
+    RouteOrder --> QueryOrder
+    RouteOrderLine --> QueryOrderLine
+```
 
 The results coming out from the Project operator will look something like this:
 
@@ -128,7 +241,25 @@ This is the result that the user asked for.
 
 The final plan ended up being:
 
-![](/assets/blog/content/vitess-grouping/Vitess-step-7.svg)
+```mermaid
+graph TD
+    Aggregate["∑ Aggregate<br>sum(col) by office"]
+    Project["π Project<br>count(*) * sum(amount)"]
+    Join["⨝ Join"]
+    RouteOrder[Route<br>order]
+    RouteOrderLine[Route<br>order_line]
+
+    QueryOrder["SELECT office, id, count(*)<br>FROM order<br>GROUP BY office, id"]
+    QueryOrderLine["SELECT sum(amount)<br>FROM order_line<br>WHERE order_id = :__order_id"]
+
+    Aggregate --> Project
+    Project --> Join
+    Join --> RouteOrder
+    Join --> RouteOrderLine
+
+    RouteOrder --> QueryOrder
+    RouteOrderLine --> QueryOrderLine
+```
 
 ## Parting words
 
