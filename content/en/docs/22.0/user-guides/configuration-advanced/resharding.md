@@ -115,8 +115,8 @@ Putting it all together, we have a VSchema similar to the following for the `cus
 {
   "sharded": true,
   "vindexes": {
-    "hash": {
-      "type": "hash"
+    "xxhash": {
+      "type": "xxhash"
     }
   },
   "tables": {
@@ -124,7 +124,7 @@ Putting it all together, we have a VSchema similar to the following for the `cus
       "column_vindexes": [
         {
           "column": "customer_id",
-          "name": "hash"
+          "name": "xxhash"
         }
       ],
       "auto_increment": {
@@ -136,7 +136,7 @@ Putting it all together, we have a VSchema similar to the following for the `cus
       "column_vindexes": [
         {
           "column": "customer_id",
-          "name": "hash"
+          "name": "xxhash"
         }
       ],
       "auto_increment": {
@@ -151,7 +151,7 @@ Putting it all together, we have a VSchema similar to the following for the `cus
 </br>
 
 Since the primary vindex columns here use the
-[`BIGINT` MySQL integer type](https://dev.mysql.com/doc/refman/en/integer-types.html), we choose `hash` as
+[`BIGINT` MySQL integer type](https://dev.mysql.com/doc/refman/en/integer-types.html), we choose `xxhash` as
 the primary [vindex type](../../../reference/features/vindexes/#predefined-vindexes), which is a pseudo-random
 way of distributing rows into various shards. For other data types we would typically use a different vindex
 type:
