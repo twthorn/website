@@ -1,7 +1,6 @@
 ---
 title: VDiff
 series: vtctldclient
-commit: d9ab9f7a1cf3cae19a1ea06963798a7646e8fb27
 ---
 ## vtctldclient VDiff
 
@@ -29,7 +28,7 @@ Perform commands related to diffing tables involved in a VReplication workflow b
 
 ### SEE ALSO
 
-* [vtctldclient](../)	 - Executes a cluster management command on the remote vtctld server.
+* [vtctldclient](../)	 - Executes a cluster management command on the remote vtctld server or alternatively as a standalone binary using --server=internal.
 * [vtctldclient VDiff create](./vtctldclient_vdiff_create/)	 - Create and run a VDiff to compare the tables involved in a VReplication workflow between the source and target.
 * [vtctldclient VDiff delete](./vtctldclient_vdiff_delete/)	 - Delete VDiffs.
 * [vtctldclient VDiff resume](./vtctldclient_vdiff_resume/)	 - Resume a VDiff.

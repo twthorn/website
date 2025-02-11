@@ -1,7 +1,6 @@
 ---
 title: ExecuteHook
 series: vtctldclient
-commit: d9ab9f7a1cf3cae19a1ea06963798a7646e8fb27
 ---
 ## vtctldclient ExecuteHook
 
@@ -44,5 +43,5 @@ vtctldclient ExecuteHook <alias> <hook_name> [<param1=value1> ...]
 
 ### SEE ALSO
 
-* [vtctldclient](../)	 - Executes a cluster management command on the remote vtctld server.
+* [vtctldclient](../)	 - Executes a cluster management command on the remote vtctld server or alternatively as a standalone binary using --server=internal.
 

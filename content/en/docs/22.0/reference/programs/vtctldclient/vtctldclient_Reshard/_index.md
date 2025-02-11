@@ -1,7 +1,6 @@
 ---
 title: Reshard
 series: vtctldclient
-commit: d9ab9f7a1cf3cae19a1ea06963798a7646e8fb27
 ---
 ## vtctldclient Reshard
 
@@ -29,7 +28,7 @@ Perform commands related to resharding a keyspace.
 
 ### SEE ALSO
 
-* [vtctldclient](../)	 - Executes a cluster management command on the remote vtctld server.
+* [vtctldclient](../)	 - Executes a cluster management command on the remote vtctld server or alternatively as a standalone binary using --server=internal.
 * [vtctldclient Reshard cancel](./vtctldclient_reshard_cancel/)	 - Cancel a Reshard VReplication workflow.
 * [vtctldclient Reshard complete](./vtctldclient_reshard_complete/)	 - Complete a Reshard VReplication workflow.
 * [vtctldclient Reshard create](./vtctldclient_reshard_create/)	 - Create and optionally run a Reshard VReplication workflow.

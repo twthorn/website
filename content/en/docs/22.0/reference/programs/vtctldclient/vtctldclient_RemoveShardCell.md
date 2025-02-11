@@ -1,7 +1,6 @@
 ---
 title: RemoveShardCell
 series: vtctldclient
-commit: d9ab9f7a1cf3cae19a1ea06963798a7646e8fb27
 ---
 ## vtctldclient RemoveShardCell
 
@@ -32,5 +31,5 @@ vtctldclient RemoveShardCell [--force|-f] [--recursive|-r] <keyspace/shard> <cel
 
 ### SEE ALSO
 
-* [vtctldclient](../)	 - Executes a cluster management command on the remote vtctld server.
+* [vtctldclient](../)	 - Executes a cluster management command on the remote vtctld server or alternatively as a standalone binary using --server=internal.
 
