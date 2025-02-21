@@ -48,6 +48,45 @@ The relay log buffers events on the target as they are received from the source.
 **relay_log_max_size** defines the maximum buffer size (in bytes). As events arrive they are stored in the relay log. The apply thread consumes these events as fast as it can. When the relay log fills up we no longer pull
 events from the source until some events are consumed. If single rows are larger than the specified buffer size, a single row is buffered at a time.
 
+{{< info >}}
+Alternatively, you can use **relay_log_max_items** to set the limit based on the number of rows rather than total bytes.
+{{< /info >}}
+
+### vreplication-enable-http-log
+
+**Type** boolean\
+**Default** false\
+**Applicable on** target
+
+This will enable an additional vttablet HTTP endpoint — `/debug/vrlog` — which will produce a log of the events replicated on primary tablets in the target keyspace by all VReplication workflows that are in the running/replicating phase.
+This can be useful when debugging issues with VReplication workflows if you want to see the events that are being replicated and how long they are taking. Example output:
+
+```proto
+FIELD Event	table_name:"customer" fields:{name:"customer_id" type:INT64 table:"customer" org_table:"customer" database:"vt_commerce" org_name:"customer_id" column_length:20 charset:63 flags:49667 column_type:"bigint"} fields:{name:"email" type:VARCHAR table:"customer" org_table:"customer" database:"vt_commerce" org_name:"email" column_length:512 charset:255 column_type:"varchar(128)"} keyspace:"commerce" shard:"0"	2025-02-21T11:58:47	158333
+ROWCHANGE Event	insert into customer(customer_id,email) values (15,'email1'), (16,'email2')	2025-02-21T11:58:47	5375
+ROW Event	table_name:"customer" row_changes:{after:{lengths:2 lengths:6 values:"15email1"}} row_changes:{after:{lengths:2 lengths:6 values:"16email2"}} keyspace:"commerce" shard:"0" flags:1	2025-02-21T11:58:47	133792
+ROWCHANGE Event	insert into customer(customer_id,email) values (18,'email3'), (17,'email4')	2025-02-21T11:59:01	7084
+ROW Event	table_name:"customer" row_changes:{after:{lengths:2 lengths:6 values:"18email3"}} row_changes:{after:{lengths:2 lengths:6 values:"17email4"}} keyspace:"commerce" shard:"0" flags:1	2025-02-21T11:59:01	116500
+```
+
+### vreplication_max_time_to_retry_on_error
+
+**Type** duration\
+**Default** 0 (no time limit)\
+**Applicable on** target
+
+After encountering the same error repeatedly for the provided amount of time, stop automatically retrying the workflow and set the state to STOPPED when persisting the error. This is useful because at this point the error is likely not transient and the workflow will not be able to make further progress without
+human intervention. This is important because the retry behavior can make it difficult to detect and alert on the workflow error state because it so quickly retries again and in doing so clears the previous error.
+
+### vreplication_net_read_timeout and vreplication_net_write_timeout
+
+**Type** integer\
+**Unit** seconds \
+**Default** vreplication_net_read_timeout = 300, vreplication_net_write_timeout = 600\
+**Applicable on** source and target
+
+These determine the MySQL session values used for [`net_read_timeout`](https://dev.mysql.com/doc/refman/en/server-system-variables.html#sysvar_net_read_timeout) and [`net_write_timeout`](https://dev.mysql.com/doc/refman/8.4/en/server-system-variables.html#sysvar_net_write_timeout) in vreplication conections.
+
 #### vreplication-parallel-insert-workers
 
 **Type** integer\
@@ -132,6 +171,23 @@ _vreplication_heartbeat_update_interval_ determines how often the time_updated c
 
 Some internal processes (like OnlineDDL) depend on the heartbeat updates for operating properly. Hence there is an upper limit on this interval, which is 60 seconds.
 
+### vreplication_replica_lag_tolerance
+
+**Type** duration\
+**Default** 1m\
+**Applicable on** target
+
+This variable determines at what point VReplication considers the workflow to be caught up enough to switch from the copy phase to the running/replicating phase.
+
+### vreplication_store_compressed_gtid
+
+**Type** boolean\
+**Default** false\
+**Applicable on** target
+
+When set to true, the target tablet will store the GTID set/position in a compressed binary format. This is useful when the GTID is large and you want to save space in the `_vt.vreplication` table. Changing this should not typically be necessary but
+it is available in the event that you bump up against the limit of the [`pos` column used in the `vreplication` sidecar database table](https://github.com/vitessio/vitess/blob/main/go/vt/sidecardb/schema/vreplication/vreplication.sql).
+
 #### vstream-binlog-rotation-threshold
 
 **Type** integer\
@@ -194,14 +250,6 @@ By default the historian loads up to 10,000 rows from the `_vt.schema_version` t
 
 The target might encounter connection failures during a workflow. VReplication automatically retries
 stalled streams after _vreplication_retry_delay_ seconds
-
-#### vreplication_max_time_to_retry_on_error
-
-**Type** duration\
-**Default** 0 (unlimited)\
-**Applicable on** target
-
-Stop automatically retrying when we've had consecutive failures with the same error for this long after the first occurrence (default 0, meaning no time limit).
 
 #### vreplication_experimental_flags
 
